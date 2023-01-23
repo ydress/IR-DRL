@@ -107,7 +107,7 @@ if __name__=='__main__':
     model = PPO("MultiInputPolicy", env, batch_size=256, verbose=1, tensorboard_log='./models/tf_logs/')
     # model = PPO.load('./models/reach_ppo_ckp_logs/reach_49152000_steps', env=env)
     model.learn(
-        total_timesteps=1e10,
+        total_timesteps=1e7,
         n_eval_episodes=64,
         callback=callback)
     model.save('./models/reach')

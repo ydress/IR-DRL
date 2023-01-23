@@ -2,7 +2,7 @@ import os
 import sys
 import gym
 import numpy as np
-from stable_baselines3 import PPO
+from stable_baselines3 import DDPG
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback, EvalCallback, StopTrainingOnMaxEpisodes
@@ -18,22 +18,23 @@ import torch.nn.functional as F
 CURRENT_PATH = os.path.abspath(__file__)
 sys.path.insert(0,os.path.dirname(CURRENT_PATH))
 from env import Env
+from envs import Env_V3
 
 params = {
     'is_render': False, 
     'is_good_view': False,
     'is_train' : True,
     'show_boundary' : False,
-    'add_moving_obstacle' : True,
+    'add_moving_obstacle' : False,
     'moving_obstacle_speed' : 0.15,
     'moving_init_direction' : -1,
     'moving_init_axis' : 0,
     'workspace' : [-0.4, 0.4, 0.3, 0.7, 0.2, 0.5],
-    'max_steps_one_episode' : 1024,
-    'num_obstacles' : 3,
+    'max_steps_one_episode' : 512,
+    'num_obstacles' : 1,
     'prob_obstacles' : 0.8,
     'obstacle_box_size' : [0.04,0.04,0.002],
-    'obstacle_sphere_radius' : 0.04       
+    'obstacle_sphere_radius' : 0.08
 }
 
 def make_env(rank: int, seed: int = 0) -> Callable:
@@ -47,7 +48,7 @@ def make_env(rank: int, seed: int = 0) -> Callable:
     :return: (Callable)
     """
     def _init() -> gym.Env:
-        env = Env(
+        env = Env_V3(
             is_render=params['is_render'],
             is_good_view=params['is_good_view'],
             is_train=params['is_train'],
@@ -72,7 +73,7 @@ def make_env(rank: int, seed: int = 0) -> Callable:
 if __name__=='__main__':
 
     # Separate evaluation env
-    eval_env = Env(
+    eval_env = Env_V3(
         is_render=params['is_render'],
         is_good_view=params['is_good_view'],
         is_train=False,
@@ -90,7 +91,7 @@ if __name__=='__main__':
         )
     eval_env = Monitor(eval_env)
     # load env
-    env = SubprocVecEnv([make_env(i) for i in range(8)])
+    env = SubprocVecEnv([make_env(i) for i in range(1)])
     # Stops training when the model reaches the maximum number of episodes
     callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=1e8, verbose=1)
 
@@ -104,7 +105,7 @@ if __name__=='__main__':
                                         name_prefix='reach')
     # Create the callback list
     callback = CallbackList([checkpoint_callback, callback_max_episodes, eval_callback])
-    model = PPO("MultiInputPolicy", env, batch_size=256, verbose=1, tensorboard_log='./models/tf_logs/')
+    model = DDPG("MultiInputPolicy", env, batch_size=256, verbose=1, tensorboard_log='./models/tf_logs/')
     # model = PPO.load('./models/reach_ppo_ckp_logs/reach_49152000_steps', env=env)
     model.learn(
         total_timesteps=1e10,

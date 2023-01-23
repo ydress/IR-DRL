@@ -19,6 +19,13 @@ sys.path.insert(0,os.path.dirname(CURRENT_PATH))
 from pybullet_util import MotionExecute
 from math_util import quaternion_matrix, euler_from_matrix, euler_from_quaternion
 from rays_to_indicator import RaysCauculator
+
+def huber_loss(a, delta):
+    if abs(a) <= delta:
+        return 0.5 * a ** 2
+    else:
+        return delta * (abs(a) - 0.5 * delta)
+
 class Env(gym.Env):
     def __init__(
         self, 
@@ -78,15 +85,30 @@ class Env(gym.Env):
         self.current_joint_position = None
         self.vel_checker = 0
         self.past_distance = deque([])
+        
+        # camera
+        self.view_matrix = p.computeViewMatrix(
+                        cameraEyePosition=[0, 1, 1.7],
+                        cameraTargetPosition=[0, 0, 0],
+                        cameraUpVector=[0, 1, 0])
+        self.projection_matrix = p.computeProjectionMatrixFOV(
+                        fov=45.0,
+                        aspect=1.0,
+                        nearVal=0.1,
+                        farVal=1.5)
+        
+        self.height = 64
 
         
         # observation space
         self.state = np.zeros((14,), dtype=np.float32)
         self.obs_rays = np.zeros(shape=(191,),dtype=np.float32)
-        self.indicator = np.zeros((24,), dtype=np.int8)
+        #self.indicator = np.zeros((24,), dtype=np.int8)
+        self.image = np.zeros((4,self.height,self.height), dtype=np.uint8)
         obs_spaces = {
+            'image': spaces.Box(0, 255, shape= (4, self.height, self.height), dtype=np.uint8),
             'position': spaces.Box(low=-2, high=2, shape=(14,), dtype=np.float32),
-            'indicator': spaces.Box(low=0, high=2, shape=(24,), dtype=np.int8)
+            #'indicator': spaces.Box(low=0, high=2, shape=(24,), dtype=np.int8),
         } 
         self.observation_space=spaces.Dict(obs_spaces)
         
@@ -294,13 +316,21 @@ class Env(gym.Env):
         self.arm3_orn = p.getLinkState(self.RobotUid,3)[5]
         self.current_joint_position = [0]
         # get lidar observation
-        lidar_results = self._set_lidar_cylinder()
-        for i, ray in enumerate(lidar_results):
-            self.obs_rays[i] = ray[2]
-        rc = RaysCauculator(self.obs_rays)
-        self.indicator = rc.get_indicator()
+        # lidar_results = self._set_lidar_cylinder()
+        # for i, ray in enumerate(lidar_results):
+        #     self.obs_rays[i] = ray[2]
+        # rc = RaysCauculator(self.obs_rays)
+        # self.indicator = rc.get_indicator()
+        
+        
             
         # print (self.indicator)
+        
+        images = p.getCameraImage(width = self.height,
+                        height = self.height,
+                        viewMatrix=self.view_matrix,
+                        projectionMatrix=self.projection_matrix)
+        self.image = np.transpose(np.reshape(images[2], (self.height, self.height, 4)),  (2, 0, 1))
         
             
         for i in range(self.base_link, self.effector_link):
@@ -370,6 +400,8 @@ class Env(gym.Env):
         # update current pose
         self.current_pos = p.getLinkState(self.RobotUid,self.effector_link)[4]
         self.current_orn = p.getLinkState(self.RobotUid,self.effector_link)[5]
+        
+        self.last_pos = self.current_pos
         self.wrist3_pos = p.getLinkState(self.RobotUid,6)[4]
         self.wrist3_orn = p.getLinkState(self.RobotUid,6)[5]
         self.wrist2_pos = p.getLinkState(self.RobotUid,5)[4]
@@ -385,14 +417,21 @@ class Env(gym.Env):
         # logging.debug("self.current_pos={}\n".format(self.current_pos))
  
         # get lidar observation
-        lidar_results = self._set_lidar_cylinder()
-        for i, ray in enumerate(lidar_results):
-            self.obs_rays[i] = ray[2]
-        # print (self.obs_rays)
-        rc = RaysCauculator(self.obs_rays)
-        self.indicator = rc.get_indicator()
+        # lidar_results = self._set_lidar_cylinder()
+        # for i, ray in enumerate(lidar_results):
+        #     self.obs_rays[i] = ray[2]
+        # # print (self.obs_rays)
+        # rc = RaysCauculator(self.obs_rays)
+        # self.indicator = rc.get_indicator()
             
-        # print (self.indicator)    
+        # print (self.indicator)   
+        
+        images = p.getCameraImage(width = self.height,
+                        height = self.height,
+                        viewMatrix=self.view_matrix,
+                        projectionMatrix=self.projection_matrix)
+        self.image = np.transpose(np.reshape(images[2], (self.height, self.height, 4)),  (2, 0, 1))
+         
         # check collision
         for i in range(len(self.obsts)):
             contacts = p.getContactPoints(bodyA=self.RobotUid, bodyB=self.obsts[i])        
@@ -409,66 +448,63 @@ class Env(gym.Env):
     
     
     def _reward(self):
-        reward = 0
         # distance between torch head and target postion
+        self.last_distance = np.linalg.norm(np.asarray(list(self.last_pos))-np.asarray(self.target_position), ord=None)
         self.distance = np.linalg.norm(np.asarray(list(self.current_pos))-np.asarray(self.target_position), ord=None)
         # print(self.distance)
-        # check if out of boundary      
-        x=self.current_pos[0]
-        y=self.current_pos[1]
-        z=self.current_pos[2]
-        out=bool(
-            x<self.x_low_obs
-            or x>self.x_high_obs
-            or y<self.y_low_obs
-            or y>self.y_high_obs
-            or z<self.z_low_obs
-            or z>self.z_high_obs
+        dd = 0.1
+        if self.distance < dd:
+            r1 = -0.5 * self.distance * self.distance
+        else:
+            r1 = -dd * (abs(self.distance) - 0.5 * dd)
+
+        x = self.current_pos[0]
+        y = self.current_pos[1]
+        z = self.current_pos[2]
+        out = bool(
+            x < self.x_low_obs
+            or x > self.x_high_obs
+            or y < self.y_low_obs
+            or y > self.y_high_obs
+            or z < self.z_low_obs
+            or z > self.z_high_obs
         )
-        # check shaking
-        shaking = 0
-        if len(self.past_distance)>=10:
-            arrow = []
-            for i in range(0,9):
-                arrow.append(0) if self.past_distance[i+1]-self.past_distance[i]>=0 else arrow.append(1)
-            for j in range(0,8):
-                if arrow[j] != arrow[j+1]:
-                    shaking += 1
-        reward -= shaking*0.005        
+        #r0 = (1/(self.obj_dist[0] ** 0.5))/10
+        a = abs(self.distance - self.last_distance)
+        a2 = self.step_counter/(self.max_steps_one_episode + 1)
+        new_reward = huber_loss(self.distance, dd) - a ** 2 + a2 ** 2
+
         # success
         is_success = False
-        if out:
-            self.terminated=True
-            reward += -5
-        elif self.collided:
-            self.terminated=True
-            reward += -10       
-        elif self.distance<self.distance_threshold:
-            self.terminated=True
+        if self.distance < self.distance_threshold:
+            self.terminated = True
             is_success = True
             self.success_counter += 1
-            reward += 10
-        # not finish when reaches max steps
-        elif self.step_counter>=self.max_steps_one_episode:
-            self.terminated=True
-            reward += -1
+            reward = 10 - new_reward
+        elif self.step_counter > self.max_steps_one_episode:
+            self.terminated = True
+            reward = -new_reward
+            # reward = -0.01*self.distance
+        elif self.collided:
+            self.terminated = True
+            reward = -10
         # this episode goes on
         else:
-            self.terminated=False
-            reward += -0.01*self.distance
+            self.terminated = False
+            reward = -new_reward
+            # reward = -0.01*self.distance
 
-        info={'step':self.step_counter,
-              'out':out,
-              'distance':self.distance,
-              'reward':reward,
-              'collided':self.collided, 
-              'shaking':shaking,
-              'is_success': is_success}
-        
-        if self.terminated: 
+        info = {'step': self.step_counter,
+                'distance': self.distance,
+                'terminated': self.terminated,
+                'reward': reward,
+                'collided': self.collided,
+                'is_success': is_success}
+
+        if self.terminated:
             print(info)
             # logger.debug(info)
-        return self._get_obs(),reward,self.terminated,info
+        return self._get_obs(), reward, self.terminated, info
     
     def _get_obs(self):
         self.state[0:6] = self.current_joint_position[1:]
@@ -480,8 +516,9 @@ class Env(gym.Env):
             self.past_distance.popleft()            
         self.state[13] = self.distance
         return{
+            'image': self.image,
             'position': self.state,
-            'indicator': self.indicator
+            #'indicator': self.indicator
         }
     
     def _set_lidar_cylinder(self, ray_max=0.3, render=False):

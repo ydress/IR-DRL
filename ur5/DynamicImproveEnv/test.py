@@ -2,7 +2,7 @@ import os
 import sys
 import gym
 import numpy as np
-from stable_baselines3 import PPO
+from stable_baselines3 import DDPG
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback, EvalCallback, StopTrainingOnMaxEpisodes
@@ -17,7 +17,7 @@ import torch.nn.functional as F
 
 CURRENT_PATH = os.path.abspath(__file__)
 sys.path.insert(0,os.path.dirname(CURRENT_PATH))
-from env import Env
+from envs import Env_V3
 
 params = {
     'is_render': True, 
@@ -29,17 +29,17 @@ params = {
     'moving_init_direction' : -1,
     'moving_init_axis' : 0,
     'workspace' : [-0.4, 0.4, 0.3, 0.7, 0.2, 0.4],
-    'max_steps_one_episode' : 1024,
-    'num_obstacles' : 3,
+    'max_steps_one_episode' : 360,
+    'num_obstacles' : 1,
     'prob_obstacles' : 0.8,
     'obstacle_box_size' : [0.04,0.04,0.002],
-    'obstacle_sphere_radius' : 0.04       
+    'obstacle_sphere_radius' : 0.08       
 }
 
 
 if __name__=='__main__':
 
-    env = Env(
+    env = Env_V3(
         is_render=params['is_render'],
         is_good_view=params['is_good_view'],
         is_train=params['is_train'],
@@ -56,7 +56,7 @@ if __name__=='__main__':
         obstacle_sphere_radius=params['obstacle_sphere_radius']
         )
     # load drl model
-    model = PPO.load('./models/reach_ppo_ckp_logs/reach_3276800_steps', env=env)
+    model = DDPG.load('./models/best/best_model', env=env)
 
     while True:
         done = False

@@ -15,6 +15,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from CustomFeatureExtractor import CustomFeatureExtractor
+
 CURRENT_PATH = os.path.abspath(__file__)
 sys.path.insert(0,os.path.dirname(CURRENT_PATH))
 from env import Env
@@ -104,8 +106,14 @@ if __name__=='__main__':
                                         name_prefix='reach')
     # Create the callback list
     callback = CallbackList([checkpoint_callback, callback_max_episodes, eval_callback])
-    model = PPO("MultiInputPolicy", env, batch_size=256, verbose=1, tensorboard_log='./models/tf_logs/')
-    # model = PPO.load('./models/reach_ppo_ckp_logs/reach_49152000_steps', env=env)
+    
+    policy_kwargs = dict(
+        features_extractor_class=CustomFeatureExtractor,
+        #features_extractor_kwargs=dict(features_dim=128),
+    )
+    
+    model = PPO("MultiInputPolicy", env, batch_size=256, verbose=1, tensorboard_log='./models/tf_logs/', policy_kwargs=policy_kwargs)
+    #model = PPO.load('./models/ckp_logs/reach_819200_steps', env=env)
     model.learn(
         total_timesteps=1e10,
         n_eval_episodes=64,

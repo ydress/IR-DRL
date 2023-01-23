@@ -19,6 +19,8 @@ sys.path.insert(0,os.path.dirname(CURRENT_PATH))
 from pybullet_util import MotionExecute
 from math_util import quaternion_matrix, euler_from_matrix, euler_from_quaternion
 from rays_to_indicator import RaysCauculator
+from Sensors.camera import Camera
+
 class Env(gym.Env):
     def __init__(
         self, 
@@ -90,6 +92,9 @@ class Env(gym.Env):
             'indicator': spaces.Box(low=0, high=2, shape=(24,), dtype=np.int8)
         } 
         self.observation_space=spaces.Dict(obs_spaces)
+        
+        # Sensors
+        self.camera1 = Camera(p)
         
 
         # step counter
@@ -286,6 +291,9 @@ class Env(gym.Env):
             
         # print (self.indicator)
         
+        # get camera observation
+        #rgb = self.camera1.get_camera_data()
+        
             
         for i in range(self.base_link, self.effector_link):
             self.current_joint_position.append(p.getJointState(bodyUniqueId=self.RobotUid, jointIndex=i)[0])
@@ -295,6 +303,7 @@ class Env(gym.Env):
         if self.episode_counter % self.episode_interval == 0:
             self.distance_threshold_last = self.distance_threshold
             success_rate = self.success_counter/self.episode_interval
+            print("Success rate: ", success_rate)
             self.success_counter = 0
             if success_rate < 0.8 and self.distance_threshold<self.distance_threshold_max:                            
                 self.distance_threshold += self.distance_threshold_increment_p
@@ -376,7 +385,11 @@ class Env(gym.Env):
         rc = RaysCauculator(self.obs_rays)
         self.indicator = rc.get_indicator()
             
-        # print (self.indicator)    
+        # print (self.indicator) 
+        
+        # get camera data
+        #rgb = self.camera1.get_camera_data()
+           
         # check collision
         for i in range(len(self.obsts)):
             contacts = p.getContactPoints(bodyA=self.RobotUid, bodyB=self.obsts[i])        

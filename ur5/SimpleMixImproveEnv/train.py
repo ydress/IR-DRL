@@ -89,25 +89,27 @@ if __name__=='__main__':
         obstacle_sphere_radius=params['obstacle_sphere_radius']
         )
     eval_env = Monitor(eval_env)
+    
+    model_name = input("Model name: ")
     # load env
     env = SubprocVecEnv([make_env(i) for i in range(8)])
     # Stops training when the model reaches the maximum number of episodes
     callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=1e8, verbose=1)
 
     # Use deterministic actions for evaluation
-    eval_callback = EvalCallback(eval_env, best_model_save_path='./models/best/',
-                       log_path='./models/best/', eval_freq=10000,
+    eval_callback = EvalCallback(eval_env, best_model_save_path=f'./models/{model_name}/best/',
+                       log_path=f'./models/{model_name}/best/', eval_freq=10000,
                        deterministic=True, render=False)
     
     # Save a checkpoint every ? steps
-    checkpoint_callback = CheckpointCallback(save_freq=51200, save_path='./models/ckp_logs/',
+    checkpoint_callback = CheckpointCallback(save_freq=51200, save_path=f'./models/{model_name}/ckp_logs/',
                                         name_prefix='reach')
     # Create the callback list
     callback = CallbackList([checkpoint_callback, callback_max_episodes, eval_callback])
-    model = PPO("MultiInputPolicy", env, batch_size=256, verbose=1, tensorboard_log='./models/tf_logs/')
-    # model = PPO.load('./models/reach_ppo_ckp_logs/reach_49152000_steps', env=env)
+    model = PPO("MultiInputPolicy", env, batch_size=256, verbose=1, tensorboard_log=f'./models/{model_name}/tf_logs/')
+    model = PPO.load(f'./models/{model_name}/ckp_logs/reach_8192000_steps', env=env)
     model.learn(
-        total_timesteps=1e10,
+        total_timesteps=1e8,
         n_eval_episodes=64,
         callback=callback)
-    model.save('./models/reach')
+    model.save(f'./models/{model_name}/reach')

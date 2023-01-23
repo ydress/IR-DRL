@@ -19,6 +19,8 @@ sys.path.insert(0,os.path.dirname(CURRENT_PATH))
 from pybullet_util import MotionExecute
 from math_util import quaternion_matrix, euler_from_matrix, euler_from_quaternion
 from rays_to_indicator import RaysCauculator
+from Sensors.camera import Camera
+
 class Env(gym.Env):
     def __init__(
         self, 
@@ -79,15 +81,20 @@ class Env(gym.Env):
         self.current_joint_position = None
         self.vel_checker = 0
         self.past_distance = deque([])
+        
+        # sensors
+        self.camera = Camera(p)
 
         
         # observation space
         self.state = np.zeros((14,), dtype=np.float32)
         self.obs_rays = np.zeros(shape=(129,),dtype=np.float32)
         self.indicator = np.zeros((10,), dtype=np.int8)
+        #self.camera = np.zeros((4,), dtype=np.float32)
         obs_spaces = {
             'position': spaces.Box(low=-2, high=2, shape=(14,), dtype=np.float32),
-            'indicator': spaces.Box(low=0, high=2, shape=(10,), dtype=np.int8)
+            'indicator': spaces.Box(low=0, high=2, shape=(10,), dtype=np.int8),
+            #'camera': spaces.Box(low=0, high=1, shape=(4,), dtype=np.float32)
         } 
         self.observation_space=spaces.Dict(obs_spaces)
         
@@ -119,12 +126,12 @@ class Env(gym.Env):
             self.distance_threshold_min = 0.01
         # parameters of augmented targets for testing
         else:
-            self.distance_threshold = 0.02
-            self.distance_threshold_last = 0.02
-            self.distance_threshold_increment_p = 0.0
-            self.distance_threshold_increment_m = 0.0
-            self.distance_threshold_max = 0.02
-            self.distance_threshold_min = 0.02
+            self.distance_threshold = 0.1
+            self.distance_threshold_last = 0.1
+            self.distance_threshold_increment_p = 0.001
+            self.distance_threshold_increment_m = 0.01
+            self.distance_threshold_max = 0.1
+            self.distance_threshold_min = 0.01
         
         self.episode_counter = 0
         self.episode_interval = 50
@@ -275,6 +282,10 @@ class Env(gym.Env):
             self.obs_rays[i] = ray[2]
         rc = RaysCauculator(self.obs_rays)
         self.indicator = rc.get_indicator()
+        
+        #TODO: Get RGB camera observation
+        rgb = self.camera._get_camera_data()
+            
             
         # print (self.indicator)
         
@@ -359,6 +370,9 @@ class Env(gym.Env):
         # print (self.obs_rays)
         rc = RaysCauculator(self.obs_rays)
         self.indicator = rc.get_indicator()
+        
+        # get camera data
+        rgb = self.camera.get_camera_data()
             
         # print (self.indicator)    
         # check collision
@@ -514,7 +528,34 @@ class Env(gym.Env):
                 else:
                     p.addUserDebugLine(ray_froms[index], ray_tops[index], hitRayColor)
         return results
-
+    
+    def _get_camera_data(self, cameraType="RGB"):
+        width = 480
+        height = 480
+        view_matrix = p.computeViewMatrix(
+                        cameraEyePosition=[0, 0, 3],
+                        cameraTargetPosition=[0, 0, 0],
+                        cameraUpVector=[0, 1, 0])
+        projection_matrix = p.computeProjectionMatrixFOV(
+                        fov=45.0,
+                        aspect=1.0,
+                        nearVal=0.1,
+                        farVal=3.1)
+        images = p.getCameraImage(width = width,
+                        height = height,
+                        viewMatrix=view_matrix,
+                        projectionMatrix=projection_matrix)
+        #depth_buffer_tiny = np.reshape(images[3], [width, height])
+        #depth_tiny = far * near / (far - (far - near) * depth_buffer_tiny)
+        rgb_tiny = np.reshape(images[2], (height, width, 4)) * 1. / 255.
+        
+        if cameraType == "RGB":
+            return rgb_tiny
+        elif cameraType == "Depth":
+            return
+            #return depth_tiny
+        else:
+            raise Exception("Unknown camera type")
     
 if __name__ == '__main__':
     

@@ -19,7 +19,7 @@ CURRENT_PATH = os.path.abspath(__file__)
 sys.path.insert(0,os.path.dirname(CURRENT_PATH))
 from reach_env import MySimpleReachEnv
 # change here
-IS_TRAIN = True
+IS_TRAIN = False
 
 def make_env(rank: int, seed: int = 0) -> Callable:
     """
