@@ -2,7 +2,7 @@ import os
 import sys
 import gym
 import numpy as np
-from stable_baselines3 import DDPG
+from stable_baselines3 import TD3
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback, EvalCallback, StopTrainingOnMaxEpisodes
@@ -10,6 +10,7 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
 from typing import Callable
 import torch
 import torch.nn as nn
@@ -34,8 +35,10 @@ params = {
     'num_obstacles' : 1,
     'prob_obstacles' : 0.8,
     'obstacle_box_size' : [0.04,0.04,0.002],
-    'obstacle_sphere_radius' : 0.08
+    'obstacle_sphere_radius' : 0.05
 }
+
+# The noise objects for TD3
 
 def make_env(rank: int, seed: int = 0) -> Callable:
     """
@@ -91,24 +94,32 @@ if __name__=='__main__':
         )
     eval_env = Monitor(eval_env)
     # load env
-    env = SubprocVecEnv([make_env(i) for i in range(1)])
+    env = SubprocVecEnv([make_env(i) for i in range(8)])
     # Stops training when the model reaches the maximum number of episodes
     callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=1e8, verbose=1)
 
+    run_name = "RUN_" + str(4)
+
     # Use deterministic actions for evaluation
-    eval_callback = EvalCallback(eval_env, best_model_save_path='./models/best/',
-                       log_path='./models/best/', eval_freq=10000,
+    eval_callback = EvalCallback(eval_env, best_model_save_path=f'./models/{run_name}/best/',
+                       log_path=f'./models/{run_name}/best/', eval_freq=10000,
                        deterministic=True, render=False)
     
     # Save a checkpoint every ? steps
-    checkpoint_callback = CheckpointCallback(save_freq=51200, save_path='./models/ckp_logs/',
+    checkpoint_callback = CheckpointCallback(save_freq=51200, save_path=f'./models/{run_name}/ckp_logs/',
                                         name_prefix='reach')
+
+    # Action Noise
+    n_actions = env.action_space.shape[-1]
+    action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=np.ones(n_actions))
+
+
     # Create the callback list
     callback = CallbackList([checkpoint_callback, callback_max_episodes, eval_callback])
-    model = DDPG("MultiInputPolicy", env, batch_size=256, verbose=1, tensorboard_log='./models/tf_logs/')
-    # model = PPO.load('./models/reach_ppo_ckp_logs/reach_49152000_steps', env=env)
+    model = TD3("MultiInputPolicy", env, train_freq=1, learning_rate=0.001, tau=0.001, gamma=0.99, action_noise=action_noise, verbose=1, tensorboard_log='./models/{run_name}/tf_logs/')
+    model = TD3.load('./models/RUN_3/reach_1000000', env=env)
     model.learn(
-        total_timesteps=1e10,
+        total_timesteps=1000000,
         n_eval_episodes=64,
         callback=callback)
-    model.save('./models/reach')
+    model.save(f'./models/{run_name}/reach_1000000')

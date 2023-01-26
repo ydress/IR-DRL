@@ -1634,11 +1634,11 @@ class Env_V3(Env_V2):
 
         # parameters of augmented targets for training
         if self.is_train:
-            self.distance_threshold = 0.2
-            self.distance_threshold_last = 0.2
+            self.distance_threshold = 0.01
+            self.distance_threshold_last = 0.01
             self.distance_threshold_increment_p = 0.0001
             self.distance_threshold_increment_m = 0.001
-            self.distance_threshold_max = 0.2
+            self.distance_threshold_max = 0.01
             self.distance_threshold_min = 0.01
         # parameters of augmented targets for testing
         else:
@@ -1689,7 +1689,7 @@ class Env_V3(Env_V2):
         # else:
         distances = euclidean_distances(self.robot_skeleton, [self.obstacle_position]) - self.obstacle_radius
         #self.obstacle_points = self.points[distances.argmin(axis=1)]
-        distances_to_obstacles = distances.min(axis=1).round(10)
+        distances_to_obstacles = abs(distances.min(axis=1).round(10))
 
         self.distances_to_obstacles = distances_to_obstacles.astype(np.float32)
 
@@ -1883,7 +1883,7 @@ class Env_V3(Env_V2):
         lambda_2 = 100
         lambda_3 = 60
         k = 8
-        d_ref = 0.2
+        d_ref = 0.05
         dirac = 0.1
 
         # set observations
@@ -1896,9 +1896,9 @@ class Env_V3(Env_V2):
         
         # calculating Huber loss for distance of end effector to target
         if abs(self.distance) < dirac:
-            R_E_T = 1 / 2 * (self.distance ** 2)
+            R_E_T = 0.5 * (self.distance ** 2)
         else:
-            R_E_T = dirac * (self.distance - 1 / 2 * dirac)
+            R_E_T = dirac * (self.distance - 0.5 * dirac)
         R_E_T = -R_E_T
         
         
@@ -1906,10 +1906,13 @@ class Env_V3(Env_V2):
 
         # reward for distance to obstacle
         # TODO: Calculate distance to obstacle
+        # 0 if distance = 1 bad. 0 if far away good
         R_R_O = (d_ref / (self.distances_to_obstacles.min() + d_ref)) ** k
 
+        R_R_O = -R_R_O
+
         # calculate motion size
-        R_A = - np.sum(np.square(self.action / 10))
+        R_A = - np.sum(np.square((self.action / 10)))
 
         # calculate reward
         reward += lambda_1 * R_E_T + lambda_2 * R_R_O + lambda_3 * R_A
@@ -1934,8 +1937,8 @@ class Env_V3(Env_V2):
             is_success = True
             self.success_counter += 1
             #reward += 500
-        elif self.collided:
-            self.terminated = True
+        #elif self.collided:
+            #self.terminated = True
             #reward += -500
         elif self.step_counter >= self.max_steps_one_episode:
             #reward += -100
