@@ -53,8 +53,8 @@ if __name__=='__main__':
         max_steps_one_episode=params['max_steps_one_episode'],
         num_obstacles=params['num_obstacles'],
         prob_obstacles=params['prob_obstacles'],
-        obstacle_box_size=params['obstacle_box_size'],
-        obstacle_sphere_radius=params['obstacle_sphere_radius']
+        #obstacle_box_size=params['obstacle_box_size'],
+        #obstacle_sphere_radius=params['obstacle_sphere_radius']
         )
     # load drl model
     model = TD3.load('./models/RUN_SHPERE/reach_1000000', env=env)

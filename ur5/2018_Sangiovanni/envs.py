@@ -51,7 +51,7 @@ class Env_V3(gym.Env):
             max_steps_one_episode: int = 1024,
             num_obstacles: int = 1,
             prob_obstacles: float = 0.8,
-            obstacle_box_size: list = [0.04, 0.04, 0.002],
+            obstacle_box_size: list = [0.002, 0.1, 0.06],
             obstacle_sphere_radius: float = 0.06,
             obstacle_shape = "BOX",
             test_mode: int = 0,
