@@ -1522,7 +1522,7 @@ class Env_V3(Env_V2):
             prob_obstacles: float = 0.8,
             obstacle_box_size: list = [0.04, 0.04, 0.002],
             obstacle_sphere_radius: float = 0.06,
-            test_mode: int = 0,
+            test_mode: int = 1,
 
     ):
         '''
@@ -1748,6 +1748,9 @@ class Env_V3(Env_V2):
         return obst_id
 
     def reset(self):
+
+        return self.reset_test()
+
         p.resetSimulation()
 
         self.action = None
@@ -1860,6 +1863,8 @@ class Env_V3(Env_V2):
 
         # perform step
 
+        #one_info = []
+
         p.stepSimulation()
 
         # check collision
@@ -1876,6 +1881,7 @@ class Env_V3(Env_V2):
         return self._reward()
 
     def _reward(self):
+        one_info = []
         reward = 0
 
         # set parameters
@@ -1886,13 +1892,25 @@ class Env_V3(Env_V2):
         d_ref = 0.05
         dirac = 0.1
 
+        last_position = self.end_effector_position
         # set observations
         self._set_obs()
         # print(self.joint_angular_velocities)
         # reward for distance to target
         # TODO: Huber-loss
-        
+        self.current_time = time.time()
+
+        one_info.append(self.current_time)
+        one_info += list(p.getLinkState(self.RobotUid,self.effector_link)[4])
+        #one_info += p.getBasePositionAndOrientation(self.RobotUid, 7)[-3]
+
         self.distance = np.linalg.norm(self.end_effector_position - self.target_position, ord=None)
+
+        #ee_vel = self.distance/(self.current_time-self.last_time)
+        #one_info.append(ee_vel)
+        #one_info.append(self.joint_angular_velocities)
+        self.recoder.append(one_info)
+        self.last_time = self.current_time
         
         # calculating Huber loss for distance of end effector to target
         if abs(self.distance) < dirac:
@@ -1966,6 +1984,9 @@ class Env_V3(Env_V2):
                 }
 
         if self.terminated:
+            #print(np.max(np.asarray(self.recoder)[:, 3]))
+            np.savetxt('./trajectory/testcase' + str(self.test_mode) + '/' + str(self.episode_counter) + '.txt',
+                       np.asarray(self.recoder))
             print(info)
             # logger.debug(info)
         return self._get_obs(), reward, self.terminated, info
@@ -2049,13 +2070,13 @@ class Env_V3(Env_V2):
 
         # set point cloud image of obstacles
         # get depth image and segmentation mask
-        depth, seg = self._get_image()
+        #depth, seg = self._get_image()
 
         # compute point cloud of obstacles
-        self.points = self._depth_img_to_point_cloud(depth)
+        #self.points = self._depth_img_to_point_cloud(depth)
 
         # preprocess point cloud
-        self.points = self._prepreprocess_point_cloud(self.points, seg)
+        #self.points = self._prepreprocess_point_cloud(self.points, seg)
 
         # reset
         self.step_counter = 0
@@ -2106,25 +2127,21 @@ class Env_V3(Env_V2):
         self.current_pos = np.asarray(p.getLinkState(self.RobotUid, self.effector_link)[4], dtype=np.float32)
         self.current_orn = p.getLinkState(self.RobotUid, self.effector_link)[5]
 
-        # for lidar
-        # self.wrist3_pos = p.getLinkState(self.RobotUid,6)[4]
-        # self.wrist3_orn = p.getLinkState(self.RobotUid,6)[5]
-        # self.wrist2_pos = p.getLinkState(self.RobotUid,5)[4]
-        # self.wrist2_orn = p.getLinkState(self.RobotUid,5)[5]
-        # self.wrist1_pos = p.getLinkState(self.RobotUid,4)[4]
-        # self.wrist1_orn = p.getLinkState(self.RobotUid,4)[5]
-        # self.arm3_pos = p.getLinkState(self.RobotUid,3)[4]
-        # self.arm3_orn = p.getLinkState(self.RobotUid,3)[5]
+        self.last_time = time.time()
+        one_info.append(self.last_time)
+
+        #one_info += list(self.current_pos)
+        #one_info += list(self.current_orn)
+
+        #one_info.append(0)
+
+        # velocites of joints
+        #one_info += [0, 0, 0, 0, 0, 0]
+        #if self.extra_obst:
+        #    one_info += [0, 0, 0]
+
 
         self.current_joint_position = [0]
-        # # get lidar observation
-        # lidar_results = self._set_lidar_cylinder()
-        # for i, ray in enumerate(lidar_results):
-        #     self.obs_rays[i] = ray[2]
-        # rc = RaysCauculator(self.obs_rays)
-        # self.indicator = rc.get_indicator()
-
-        # print (self.indicator)
 
         for i in range(self.base_link, self.effector_link):
             self.current_joint_position.append(p.getJointState(bodyUniqueId=self.RobotUid, jointIndex=i)[0])
@@ -2157,6 +2174,10 @@ class Env_V3(Env_V2):
         # set observations
         self._set_obs()
 
+        one_info += list(p.getLinkState(self.RobotUid, self.effector_link)[4])
+
+        self.recoder.append(one_info)
+
         return self._get_obs()
 
     def _test_1(self):
@@ -2181,6 +2202,8 @@ class Env_V3(Env_V2):
             baseOrientation=choice([0.707, 0, 0, 0.707])
         )
         obsts.append(obst_1)
+
+        self.obstacle_radius = 0.05
         return init_home, init_orn, target_position, obsts
 
     def _test_2(self):
@@ -2193,6 +2216,8 @@ class Env_V3(Env_V2):
             basePosition=target_position,
         )
         obsts = []
+
+        self.obstacle_radius = 0.05
 
         return init_home, init_orn, target_position, obsts
 
@@ -2214,6 +2239,8 @@ class Env_V3(Env_V2):
             baseOrientation=choice([0.707, 0, 0, 0.707])
         )
         obsts.append(obst_2)
+        self.obstacle_radius = 0.05
+
         return obsts
 
     def _update_target(self, target):
@@ -2433,6 +2460,9 @@ class Env_V4(Env_V3):
                 }
 
         if self.terminated:
+            print(np.max(np.asarray(self.recoder)[:,8]))
+            np.savetxt('./trajectory/testcase' + str(self.test_mode) + '/' + str(self.episode_counter) + '.txt',
+                       np.asarray(self.recoder))
             print(info)
             # logger.debug(info)
         return self._get_obs(), reward, self.terminated, info
@@ -2700,7 +2730,7 @@ class Env_V5(Env_V3):
 
 
 if __name__ == '__main__':
-    env = Env_V2(is_render=True, is_good_view=False, add_moving_obstacle=True)
+    env = Env_V3(is_render=True, is_good_view=False, add_moving_obstacle=True)
     episodes = 500
     for episode in range(episodes):
         state = env.reset()

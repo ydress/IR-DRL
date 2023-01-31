@@ -17,7 +17,7 @@ import torch.nn.functional as F
 
 CURRENT_PATH = os.path.abspath(__file__)
 sys.path.insert(0,os.path.dirname(CURRENT_PATH))
-from envs import Env_V3
+from envs import MultiObsEnv
 
 params = {
     'is_render': True, 
@@ -40,7 +40,7 @@ params = {
 
 if __name__=='__main__':
 
-    env = Env_V3(
+    env = MultiObsEnv(
         is_render=params['is_render'],
         is_good_view=params['is_good_view'],
         is_train=params['is_train'],
@@ -57,7 +57,7 @@ if __name__=='__main__':
         #obstacle_sphere_radius=params['obstacle_sphere_radius']
         )
     # load drl model
-    model = TD3.load('./models/RUN_SHPERE/reach_1000000', env=env)
+    model = TD3.load('./models/RUN_BOX_2/reach_500000', env=env)
 
     while True:
         done = False

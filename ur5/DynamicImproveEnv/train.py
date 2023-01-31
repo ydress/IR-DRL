@@ -98,7 +98,7 @@ if __name__=='__main__':
     # Stops training when the model reaches the maximum number of episodes
     callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=1e8, verbose=1)
 
-    run_name = "RUN_" + str(4)
+    run_name = "RUN_" + str(5)
 
     # Use deterministic actions for evaluation
     eval_callback = EvalCallback(eval_env, best_model_save_path=f'./models/{run_name}/best/',
@@ -122,4 +122,4 @@ if __name__=='__main__':
         total_timesteps=1000000,
         n_eval_episodes=64,
         callback=callback)
-    model.save(f'./models/{run_name}/reach_1000000')
+    model.save(f'./models/{run_name}/reach_1')

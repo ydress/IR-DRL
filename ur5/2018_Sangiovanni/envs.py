@@ -121,7 +121,7 @@ class Env_V3(gym.Env):
         self.joint_angular_velocities = np.zeros(6, dtype=np.float32)
         self.target_position = np.zeros(3, dtype=np.float32)
         self.end_effector_position = np.zeros(3, dtype=np.float32)
-        self.obstacle_position = np.zeros(3, dtype=np.float32)
+        self.obstacle_position = np.zeros(9, dtype=np.float32)
         self.obstacle_velocity = np.zeros(3, dtype=np.float32)
 
         self.robot_skeleton = np.zeros((10, 3), dtype=np.float32)
@@ -131,7 +131,7 @@ class Env_V3(gym.Env):
             "joint_angular_velocities": spaces.Box(low=-10, high=10, shape=(6,)),
             "target_position": spaces.Box(low=-2, high=2, shape=(3,)),
             "end_effector_position": spaces.Box(low=-2, high=2, shape=(3,)),
-            "obstacle_position": spaces.Box(low=-2, high=2, shape=(3,)),
+            "obstacle_position": spaces.Box(low=-2, high=2, shape=(9, )),
             "obstacle_velocity": spaces.Box(low=-10, high=10, shape=(3,))
         }
         self.observation_space = spaces.Dict(obs_spaces)
@@ -215,32 +215,7 @@ class Env_V3(gym.Env):
         init_orn = np.array([np.pi, 0, np.pi] + 0.1 * rand_orn)
         return init_home, init_orn
 
-    def _set_min_distances_of_robot_to_obstacle(self, obs_positions) -> None:
-        """
-        Compute the minimal distances from the robot skeleton to the obstacle points. Also determine the points
-        that are closest to each point in the skeleton.
-        """
 
-        # Compute minimal euclidean distances from the robot skeleton to the obstacle points
-        # if self.points.shape[0] == 0:
-        #     self.obstacle_points = np.repeat(np.array([0, 0, -2])[na, :], 10, axis=0)
-        #     distances_to_obstacles = euclidean_distances(self.robot_skeleton,
-        #                                                  np.array([0, 0, -2])[na, :]).min(axis=1).round(10)
-        # else:
-        if self.obstacle_shape == "BOX":
-            distances = euclidean_distances(self.robot_skeleton, obs_positions) - max(self.obstacle_box_size)
-        else:
-            distances = euclidean_distances(self.robot_skeleton, obs_positions) - self.obstacle_radius
-        #self.obstacle_points = self.points[distances.argmin(axis=1)]
-        distances_to_obstacles = abs(distances.min(axis=1).round(10))
-
-        self.distances_to_obstacles = distances_to_obstacles.astype(np.float32)
-
-        # p.removeAllUserDebugItems()
-        # p.addUserDebugPoints(self.obstacle_points, np.tile([255, 0, 0], self.obstacle_points.shape[0]).reshape(self.obstacle_points.shape),
-        #                      pointSize=3)
-        # time.sleep(20)
-        
     def _create_visual_box(self, halfExtents):
         visual_id = p.createVisualShape(shapeType=p.GEOM_BOX, halfExtents=halfExtents, rgbaColor=[0.5, 0.5, 0.5, 1])
         return visual_id
@@ -296,11 +271,7 @@ class Env_V3(gym.Env):
                 )
             obsts.append(obst_id)
 
-        return obsts
-
-    def _approx_closest_point_to_box(self, pos):
-        pass
-        
+        return obsts        
 
     def _add_moving_plate(self):
         pos = copy.copy(self.target_position)
@@ -549,19 +520,78 @@ class Env_V3(gym.Env):
 
         self.target_position = self.target_position
 
-        obs_id = self.obsts[0]
+        self._set_robot_skeleton()
+        self._set_min_distances_of_robot_to_obstacle(self._calculate_box_points(self.obsts))
 
-        obs_pos = p.getBasePositionAndOrientation(obs_id)[0]
-        obs_vel = p.getBaseVelocity(obs_id)[0]
+        # obstacle positions
+        obs_pos = [p.getBasePositionAndOrientation(obs_id)[0] for obs_id in self.obsts]
+        obs_vel = [p.getBaseVelocity(obs_id)[0] for obs_id in self.obsts]
+
+        #obs_id = self.obsts[0]
+
+        #obs_pos = p.getBasePositionAndOrientation(obs_id)[0]
+        #obs_vel = p.getBaseVelocity(obs_id)[0]
         self.obstacle_position = np.array(obs_pos, dtype=np.float32) #Only use position not orientation
         self.obstacle_velocity = np.array(obs_vel, dtype=np.float32)
 
-        self._set_robot_skeleton()
-        self._set_min_distances_of_robot_to_obstacle([self.obstacle_position])
 
 
+    """def _get_obstacle_position(self, obs_id):
+        obs_pos = p.getBasePositionAndOrientation(obs_id)[0]
+
+        if self.obstacle_shape == "BOX":
+            obs_pos = self._calculate_box_points(obs_pos, self.obstacle_box_size)
+
+        return obs_pos"""
+
+    def _calculate_box_points(self, positions, halfextends):
+        points = positions
+
+        h = np.array([[-1.0, -1.0, -1.0],
+                      [-1.0, -1.0, 1.0],
+                      [1.0, -1.0, -1.0],
+                      [1.0, -1.0, 1.0],
+                      [-1.0, 1.0, -1.0],
+                      [-1.0, 1.0, 1.0],
+                      [1.0, 1.0, -1.0],
+                      [1.0, 1.0, 1.0]]).reshape((8, 3))
+
+        for pos in positions:
+
+            transform = h * halfextends
+
+            points = np.append(points, pos + transform, axis=0)
+
+        return points
+
+    def _set_min_distances_of_robot_to_obstacle(self, obs_positions) -> None:
+        """
+        Compute the minimal distances from the robot skeleton to the obstacle points. Also determine the points
+        that are closest to each point in the skeleton.
+        """
+
+        # Compute minimal euclidean distances from the robot skeleton to the obstacle points
+        # if self.points.shape[0] == 0:
+        #     self.obstacle_points = np.repeat(np.array([0, 0, -2])[na, :], 10, axis=0)
+        #     distances_to_obstacles = euclidean_distances(self.robot_skeleton,
+        #                                                  np.array([0, 0, -2])[na, :]).min(axis=1).round(10)
+        # else:
+        if self.obstacle_shape == "BOX":
+            distances = euclidean_distances(self.robot_skeleton, obs_positions)
+        else:
+            distances = euclidean_distances(self.robot_skeleton, obs_positions) - self.obstacle_radius
+        # self.obstacle_points = self.points[distances.argmin(axis=1)]
+        distances_to_obstacles = abs(distances.min(axis=1).round(10))
+
+        self.distances_to_obstacles = distances_to_obstacles.astype(np.float32)
+
+        # p.removeAllUserDebugItems()
+        # p.addUserDebugPoints(self.obstacle_points, np.tile([255, 0, 0], self.obstacle_points.shape[0]).reshape(self.obstacle_points.shape),
+        #                      pointSize=3)
+        # time.sleep(20)
 
     def _get_obs(self):
+
         return {
             "joint_positions": self.joint_positions,
             "joint_angular_velocities": self.joint_angular_velocities,
@@ -599,3 +629,272 @@ class Env_V3(gym.Env):
         # input("Press ENTER")
 
         return self._get_obs()
+
+class MultiObsEnv(Env_V3):
+
+    def __init__(
+            self,
+            is_render: bool = False,
+            is_good_view: bool = False,
+            is_train: bool = True,
+            show_boundary: bool = True,
+            add_moving_obstacle: bool = False,
+            moving_obstacle_speed: float = 0.15,
+            moving_init_direction: int = -1,
+            moving_init_axis: int = 0,
+            workspace: list = [-0.4, 0.4, 0.3, 0.7, 0.2, 0.5],
+            max_steps_one_episode: int = 1024,
+            num_obstacles: int = 1,
+            prob_obstacles: float = 0.8,
+            obstacle_box_size: list = [0.002, 0.1, 0.06],
+            obstacle_sphere_radius: float = 0.06,
+            obstacle_shape = "BOX",
+            test_mode: int = 0,
+
+    ):
+        '''
+        is_render: start GUI
+        is_good_view: slow down the motion to have a better look
+        is_tarin: training or testing
+        '''
+        self.is_render = is_render
+        self.is_good_view = is_good_view
+        self.is_train = is_train
+        self.DISPLAY_BOUNDARY = show_boundary
+        self.extra_obst = add_moving_obstacle
+        if self.is_render:
+            self.physicsClient = p.connect(p.GUI)
+        else:
+            p.connect(p.DIRECT)
+
+        # test mode
+        self.test_mode = test_mode
+        # set the area of the workspace
+        self.x_low_obs = workspace[0]
+        self.x_high_obs = workspace[1]
+        self.y_low_obs = workspace[2]
+        self.y_high_obs = workspace[3]
+        self.z_low_obs = workspace[4]
+        self.z_high_obs = workspace[5]
+
+        # for the moving
+        self.direction = moving_init_direction
+        self.moving_xy = moving_init_axis  # 0 for x, 1 for y
+        self.moving_obstacle_speed = moving_obstacle_speed
+
+        # action sapce
+        self.action = np.zeros(6, dtype=np.float32)
+        self.previous_action = np.zeros(6, dtype=np.float32)
+        # normalize action space from -1 to 1 and alter multiply the action by 10:
+        # https://stable-baselines.readthedocs.io/en/master/guide/rl_tips.html
+        self.action_space = spaces.Box(low=-1, high=1, shape=(6,), dtype=np.float32)
+
+        # set joint speed; in order to make Bennos step function work
+        self.joint_speed = 0.015
+        self.joints_lower_limits = np.array([-3.228858, -3.228858, -2.408553, -6.108651, -2.26891, -6.108651])
+        self.joints_upper_limits = np.array([3.22885911, 1.13446401, 3.0543261, 6.10865238, 2.26892802, 6.1086523])
+        self.joints_range = self.joints_upper_limits - self.joints_lower_limits
+
+        # parameters for spatial infomation
+        self.home = [0, np.pi / 2, -np.pi / 6, -2 * np.pi / 3, -4 * np.pi / 9, np.pi / 2, 0.0]
+        self.target_position = None
+        self.obsts = []
+        self.vel_checker = 0
+        self.past_distance = deque([])
+
+        # observation space
+        """ According to paper 2018
+        TODO: 
+            * Joint positions
+            * Joint Velocities
+            * Traget point position
+            * EE Position (Assumed to be known)
+            * Obstacle position (Assumed to be known)
+            * velocity (Assumed to be correctly estimated)
+        """
+        self.joint_positions = np.zeros(6, dtype=np.float32)
+        self.joint_angular_velocities = np.zeros(6, dtype=np.float32)
+        self.target_position = np.zeros(3, dtype=np.float32)
+        self.end_effector_position = np.zeros(3, dtype=np.float32)
+        self.obstacle_position = np.zeros((3, 3), dtype=np.float32)
+        self.obstacle_velocity = np.zeros((3, 3), dtype=np.float32)
+
+        self.obstacle_position_filled = np.zeros((3, 3), dtype=np.float32)
+        self.obstacle_velocity_filled = np.zeros((3, 3), dtype=np.float32)
+
+        self.robot_skeleton = np.zeros((10, 3), dtype=np.float32)
+
+        obs_spaces = {
+            "joint_positions": spaces.Box(low=7, high=7, shape=(6,)),
+            "joint_angular_velocities": spaces.Box(low=-10, high=10, shape=(6,)),
+            "target_position": spaces.Box(low=-2, high=2, shape=(3,)),
+            "end_effector_position": spaces.Box(low=-2, high=2, shape=(3,)),
+            "obstacle_position": spaces.Box(low=-2, high=2, shape=(3, 3)),
+            "obstacle_velocity": spaces.Box(low=-10, high=10, shape=(3, 3))
+        }
+        self.observation_space = spaces.Dict(obs_spaces)
+
+        # step counter
+        self.step_counter = 0
+        # max steps in one episode
+        self.max_steps_one_episode = max_steps_one_episode
+        # whether collision
+        self.collided = None
+        # path to urdf of robot arm
+        self.urdf_root_path = '../ur5_description/urdf/ur5.urdf'
+        # link indexes
+        self.base_link = 1
+        self.effector_link = 7
+        # obstacles
+        self.num_obstacles = num_obstacles
+        self.prob_obstacles = prob_obstacles
+        self.obstacle_box_size = obstacle_box_size
+        self.obstacle_radius = obstacle_sphere_radius
+        self.obstacle_shape = obstacle_shape
+
+        # # for debugging camera
+        # self.x_offset = p.addUserDebugParameter("x", -2, 2, 0)
+        # self.y_offset = p.addUserDebugParameter("y", -2, 2, 0)
+        # self.z_offset = p.addUserDebugParameter("z", -2, 2, 0)
+        # set image width and height
+
+        # parameters of augmented targets for training
+        if self.is_train:
+            self.distance_threshold = 0.01
+            self.distance_threshold_last = 0.01
+            self.distance_threshold_increment_p = 0.0001
+            self.distance_threshold_increment_m = 0.001
+            self.distance_threshold_max = 0.01
+            self.distance_threshold_min = 0.01
+        # parameters of augmented targets for testing
+        else:
+            self.distance_threshold = 0.01
+            self.distance_threshold_last = 0.01
+            self.distance_threshold_increment_p = 0.0
+            self.distance_threshold_increment_m = 0.0
+            self.distance_threshold_max = 0.01
+            self.distance_threshold_min = 0.01
+
+        self.episode_counter = 0
+        self.episode_interval = 50
+        self.success_counter = 0
+
+
+    def _get_obs(self):
+
+        self.obstacle_position_filled = self.obstacle_position
+        self.obstacle_velocity_filled = self.obstacle_velocity
+
+        for i in range(3 - len(self.obstacle_position)):
+            #h_inf = np.array([[np.NINF, np.NINF, np.NINF]])
+            self.obstacle_position_filled = np.append(self.obstacle_position_filled, [np.zeros(3)], axis=0)
+            self.obstacle_velocity_filled = np.append(self.obstacle_velocity_filled, [np.zeros(3)], axis=0)
+
+        return {
+            "joint_positions": self.joint_positions,
+            "joint_angular_velocities": self.joint_angular_velocities,
+            "target_position": self.target_position,
+            "end_effector_position": self.end_effector_position,
+            "obstacle_position": self.obstacle_position_filled.reshape((3, 3)),
+            "obstacle_velocity": self.obstacle_velocity_filled.reshape((3, 3))
+        }
+
+    def _calculate_box_points(self, obs_ids):
+        if len(obs_ids) > 0:
+            points = np.array([p.getBasePositionAndOrientation(obs_ids[0])[0]])
+
+            h = np.array([[-1.0, -1.0, -1.0],
+                          [-1.0, -1.0, 1.0],
+                          [1.0, -1.0, -1.0],
+                          [1.0, -1.0, 1.0],
+                          [-1.0, 1.0, -1.0],
+                          [-1.0, 1.0, 1.0],
+                          [1.0, 1.0, -1.0],
+                          [1.0, 1.0, 1.0]]).reshape((8, 3))
+
+        for obs_id in obs_ids:
+            pos = p.getBasePositionAndOrientation(obs_id)[0]
+
+            points = np.append(points, [pos], axis=0)
+
+            halfextends = self.hE[obs_id]
+
+            transform = h * halfextends
+
+            points = np.append(points, pos + transform, axis=0)
+
+        else:
+            points = np.zeros((3, 3))
+
+        return points
+
+    def _add_obstacles(self):
+        obsts = []
+        self.hE = {}
+        for item in range(3):
+            if np.random.random() > 0.3:
+                i = choice([0, 1, 2])
+                position = 0.5 * (np.array(self.init_home) + np.array(self.target_position)) + 0.05 * np.random.uniform(
+                    low=-1, high=1, size=(3,))
+                if i == 0:
+                    obst_id = p.createMultiBody(
+                        baseMass=0,
+                        baseVisualShapeIndex=self._create_visual_box([0.05, 0.05, 0.001]),
+                        baseCollisionShapeIndex=self._create_collision_box([0.05, 0.05, 0.001]),
+                        basePosition=position
+                    )
+                    obsts.append(obst_id)
+                    self.hE[obst_id] = [0.05, 0.05, 0.001]
+                if i == 1:
+                    obst_id = p.createMultiBody(
+                        baseMass=0,
+                        baseVisualShapeIndex=self._create_visual_box([0.001, 0.08, 0.06]),
+                        baseCollisionShapeIndex=self._create_collision_box([0.001, 0.05, 0.05]),
+                        basePosition=position
+                    )
+                    obsts.append(obst_id)
+                    self.hE[obst_id] = [0.001, 0.08, 0.06]
+                if i == 2:
+                    obst_id = p.createMultiBody(
+                        baseMass=0,
+                        baseVisualShapeIndex=self._create_visual_box([0.08, 0.001, 0.06]),
+                        baseCollisionShapeIndex=self._create_collision_box([0.05, 0.001, 0.05]),
+                        basePosition=position
+                    )
+                    obsts.append(obst_id)
+                    self.hE[obst_id] = [0.08, 0.001, 0.06]
+
+
+        if len(obsts) == 0:
+            i = choice([0, 1, 2])
+            position = 0.5 * (np.array(self.init_home) + np.array(self.target_position)) + 0.05 * np.random.uniform(
+                low=-1, high=1, size=(3,))
+            if i == 0:
+                obst_id = p.createMultiBody(
+                    baseMass=0,
+                    baseVisualShapeIndex=self._create_visual_box([0.05, 0.05, 0.001]),
+                    baseCollisionShapeIndex=self._create_collision_box([0.05, 0.05, 0.001]),
+                    basePosition=position
+                )
+                obsts.append(obst_id)
+                self.hE[obst_id] = [0.05, 0.05, 0.001]
+            if i == 1:
+                obst_id = p.createMultiBody(
+                    baseMass=0,
+                    baseVisualShapeIndex=self._create_visual_box([0.001, 0.08, 0.06]),
+                    baseCollisionShapeIndex=self._create_collision_box([0.001, 0.05, 0.05]),
+                    basePosition=position
+                )
+                obsts.append(obst_id)
+                self.hE[obst_id] = [0.001, 0.08, 0.06]
+            if i == 2:
+                obst_id = p.createMultiBody(
+                    baseMass=0,
+                    baseVisualShapeIndex=self._create_visual_box([0.08, 0.001, 0.06]),
+                    baseCollisionShapeIndex=self._create_collision_box([0.05, 0.001, 0.05]),
+                    basePosition=position
+                )
+                obsts.append(obst_id)
+                self.hE[obst_id] = [0.08, 0.001, 0.06]
+
+        return obsts

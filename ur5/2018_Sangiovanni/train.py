@@ -18,7 +18,7 @@ import torch.nn.functional as F
 
 CURRENT_PATH = os.path.abspath(__file__)
 sys.path.insert(0,os.path.dirname(CURRENT_PATH))
-from envs import Env_V3
+from envs import MultiObsEnv as Env
 
 params = {
     'is_render': False, 
@@ -51,7 +51,7 @@ def make_env(rank: int, seed: int = 0) -> Callable:
     :return: (Callable)
     """
     def _init() -> gym.Env:
-        env = Env_V3(
+        env = Env(
             is_render=params['is_render'],
             is_good_view=params['is_good_view'],
             is_train=params['is_train'],
@@ -76,7 +76,7 @@ def make_env(rank: int, seed: int = 0) -> Callable:
 if __name__=='__main__':
 
     # Separate evaluation env
-    eval_env = Env_V3(
+    eval_env = Env(
         is_render=params['is_render'],
         is_good_view=params['is_good_view'],
         is_train=False,
@@ -98,7 +98,7 @@ if __name__=='__main__':
     # Stops training when the model reaches the maximum number of episodes
     callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=1e8, verbose=1)
 
-    run_name = "RUN_BOX_" + str(0)
+    run_name = "RUN_BOX_" + str(2)
 
     # Use deterministic actions for evaluation
     eval_callback = EvalCallback(eval_env, best_model_save_path=f'./models/{run_name}/best/',
@@ -106,7 +106,7 @@ if __name__=='__main__':
                        deterministic=True, render=False)
     
     # Save a checkpoint every ? steps
-    checkpoint_callback = CheckpointCallback(save_freq=51200, save_path=f'./models/{run_name}/ckp_logs/',
+    checkpoint_callback = CheckpointCallback(save_freq=32000, save_path=f'./models/{run_name}/ckp_logs/',
                                         name_prefix='reach')
 
     # Action Noise
@@ -117,9 +117,9 @@ if __name__=='__main__':
     # Create the callback list
     callback = CallbackList([checkpoint_callback, callback_max_episodes, eval_callback])
     model = TD3("MultiInputPolicy", env, train_freq=1, learning_rate=0.001, tau=0.001, gamma=0.99, action_noise=action_noise, verbose=1, tensorboard_log='./models/{run_name}/tf_logs/')
-    model = TD3.load('./models/RUN_SHPERE/reach_1000000', env=env)
+    #model = TD3.load('./models/RUN_SHPERE/reach_1000000', env=env)
     model.learn(
-        total_timesteps=5000,
+        total_timesteps=500000,
         n_eval_episodes=64,
         callback=callback)
-    model.save(f'./models/{run_name}/reach')
+    model.save(f'./models/{run_name}/reach_500000')
