@@ -26,13 +26,13 @@ params = {
     'is_good_view': False,
     'is_train' : True,
     'show_boundary' : False,
-    'add_moving_obstacle' : False,
+    'add_moving_obstacle' : True,
     'moving_obstacle_speed' : 0.15,
     'moving_init_direction' : -1,
     'moving_init_axis' : 0,
     'workspace' : [-0.4, 0.4, 0.3, 0.7, 0.2, 0.5],
     'max_steps_one_episode' : 512,
-    'num_obstacles' : 1,
+    'num_obstacles' : 0,
     'prob_obstacles' : 0.8,
     'obstacle_box_size' : [0.04,0.04,0.002],
     'obstacle_sphere_radius' : 0.05
@@ -117,7 +117,7 @@ if __name__=='__main__':
     # Create the callback list
     callback = CallbackList([checkpoint_callback, callback_max_episodes, eval_callback])
     model = TD3("MultiInputPolicy", env, train_freq=1, learning_rate=0.001, tau=0.001, gamma=0.99, action_noise=action_noise, verbose=1, tensorboard_log='./models/{run_name}/tf_logs/')
-    model = TD3.load('./models/RUN_3/reach_1000000', env=env)
+    model = TD3.load('./models/RUN_3/ckp_logs/reach_409600_steps', env=env)
     model.learn(
         total_timesteps=1000000,
         n_eval_episodes=64,

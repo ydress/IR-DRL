@@ -1518,7 +1518,7 @@ class Env_V3(Env_V2):
             moving_init_axis: int = 0,
             workspace: list = [-0.4, 0.4, 0.3, 0.7, 0.2, 0.5],
             max_steps_one_episode: int = 1024,
-            num_obstacles: int = 1,
+            num_obstacles: int = 0,
             prob_obstacles: float = 0.8,
             obstacle_box_size: list = [0.04, 0.04, 0.002],
             obstacle_sphere_radius: float = 0.06,
@@ -1574,6 +1574,8 @@ class Env_V3(Env_V2):
         self.obsts = []
         self.vel_checker = 0
         self.past_distance = deque([])
+
+        self.mode = 1
 
         # observation space
         """ According to paper 2018
@@ -1634,7 +1636,7 @@ class Env_V3(Env_V2):
 
         # parameters of augmented targets for training
         if self.is_train:
-            self.distance_threshold = 0.01
+            self.distance_threshold = 0.05
             self.distance_threshold_last = 0.01
             self.distance_threshold_increment_p = 0.0001
             self.distance_threshold_increment_m = 0.001
@@ -1642,7 +1644,7 @@ class Env_V3(Env_V2):
             self.distance_threshold_min = 0.01
         # parameters of augmented targets for testing
         else:
-            self.distance_threshold = 0.01
+            self.distance_threshold = 0.05
             self.distance_threshold_last = 0.01
             self.distance_threshold_increment_p = 0.0
             self.distance_threshold_increment_m = 0.0
@@ -1652,6 +1654,8 @@ class Env_V3(Env_V2):
         self.episode_counter = 0
         self.episode_interval = 50
         self.success_counter = 0
+
+        self.vel = np.zeros((3))
 
     def _set_robot_skeleton(self):
         robot_skeleton = []
@@ -1718,7 +1722,7 @@ class Env_V3(Env_V2):
 
     def _add_obstacles(self):
         obsts = []
-        for item in range(self.num_obstacles):
+        """for item in range(self.num_obstacles):
             position = 0.5 * (np.array(self.init_home) + np.array(self.target_position)) + 0.05 * np.random.uniform(
                 low=-1, high=1, size=(3,))
             obst_id = p.createMultiBody(
@@ -1727,7 +1731,7 @@ class Env_V3(Env_V2):
                 baseCollisionShapeIndex=self._create_collision_sphere(radius=self.obstacle_radius),
                 basePosition=position
             )
-            obsts.append(obst_id)
+            obsts.append(obst_id)"""
 
         return obsts
 
@@ -1749,7 +1753,7 @@ class Env_V3(Env_V2):
 
     def reset(self):
 
-        return self.reset_test()
+        #return self.reset_test()
 
         p.resetSimulation()
 
@@ -1765,6 +1769,11 @@ class Env_V3(Env_V2):
         self.terminated = False
         self.ep_reward = 0
         p.setGravity(0, 0, 0)
+
+        if self.extra_obst:
+            self.moving_xy = 1
+            self.barrier = self._add_moving_plate()
+            self.obsts.append(self.barrier)
 
         # display boundary
         if self.DISPLAY_BOUNDARY:
@@ -1822,12 +1831,16 @@ class Env_V3(Env_V2):
             print('current distance threshold: ', self.distance_threshold)
             print("previous distance threshold: ", self.distance_threshold_last)
 
+
+
         # do this step in pybullet
         p.stepSimulation()
 
         # if the simulation starts with the robot arm being inside an obstacle, reset again
         if p.getContactPoints(self.RobotUid) != ():
             self.reset()
+
+
 
         # set observations
         self._set_obs()
@@ -1836,6 +1849,8 @@ class Env_V3(Env_V2):
 
     def step(self, action):
         self.action = action * 10
+
+        dv = 0.005
         # self.action = np.repeat(10, 6)
         p.setJointMotorControlArray(self.RobotUid,
                                     [1, 2, 3, 4, 5, 6],
@@ -1861,6 +1876,23 @@ class Env_V3(Env_V2):
 
         # for moving obstacle
 
+        if self.mode == 1 and self.extra_obst:
+            barr_pos = np.asarray(p.getBasePositionAndOrientation(self.barrier)[0])
+            barr_pos_old = np.asarray(p.getBasePositionAndOrientation(self.barrier)[0])
+            if self.moving_xy == 0:
+                if barr_pos[0] > self.x_high_obs or barr_pos[0] < self.x_low_obs:
+                    self.direction = -self.direction
+                barr_pos[0] += self.direction * self.moving_obstacle_speed * dv
+                p.resetBasePositionAndOrientation(self.barrier, barr_pos,
+                                                  p.getBasePositionAndOrientation(self.barrier)[1])
+            if self.moving_xy == 1:
+                if barr_pos[1] > self.y_high_obs or barr_pos[1] < self.y_low_obs:
+                    self.direction = -self.direction
+                barr_pos[1] += self.direction * self.moving_obstacle_speed * dv
+                p.resetBasePositionAndOrientation(self.barrier, barr_pos,
+                                                  p.getBasePositionAndOrientation(self.barrier)[1])
+
+            self.vel = barr_pos - barr_pos_old
         # perform step
 
         #one_info = []
@@ -1874,7 +1906,7 @@ class Env_V3(Env_V2):
                 self.collided = True
 
         if self.is_good_view:
-            time.sleep(0.02)
+            time.sleep(0.008)
 
         self.step_counter += 1
         # input("Press ENTER")
@@ -1909,7 +1941,7 @@ class Env_V3(Env_V2):
         #ee_vel = self.distance/(self.current_time-self.last_time)
         #one_info.append(ee_vel)
         #one_info.append(self.joint_angular_velocities)
-        self.recoder.append(one_info)
+        #self.recoder.append(one_info)
         self.last_time = self.current_time
         
         # calculating Huber loss for distance of end effector to target
@@ -1985,8 +2017,8 @@ class Env_V3(Env_V2):
 
         if self.terminated:
             #print(np.max(np.asarray(self.recoder)[:, 3]))
-            np.savetxt('./trajectory/testcase' + str(self.test_mode) + '/' + str(self.episode_counter) + '.txt',
-                       np.asarray(self.recoder))
+            #np.savetxt('./trajectory/testcase' + str(self.test_mode) + '/' + str(self.episode_counter) + '.txt',
+             #          np.asarray(self.recoder))
             print(info)
             # logger.debug(info)
         return self._get_obs(), reward, self.terminated, info
@@ -2026,7 +2058,7 @@ class Env_V3(Env_V2):
         obs_id = self.obsts[0]
 
         obs_pos = p.getBasePositionAndOrientation(obs_id)[0]
-        obs_vel = p.getBaseVelocity(obs_id)[0]
+        obs_vel = self.vel
         self.obstacle_position = np.array(obs_pos, dtype=np.float32) #Only use position not orientation
         self.obstacle_velocity = np.array(obs_vel, dtype=np.float32)
 
@@ -2197,7 +2229,7 @@ class Env_V3(Env_V2):
         obst_1 = p.createMultiBody(
             baseMass=0,
             # baseVisualShapeIndex=self._create_visual_box([0.002,0.1,0.05]),
-            baseCollisionShapeIndex=self._create_collision_box([0.002, 0.1, 0.05]),
+            baseCollisionShapeIndex=self._create_collision_box([0.002, 0.05, 0.05]),
             basePosition=[0.0, 0.4, 0.3],
             baseOrientation=choice([0.707, 0, 0, 0.707])
         )

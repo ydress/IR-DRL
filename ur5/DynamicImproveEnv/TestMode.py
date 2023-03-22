@@ -38,7 +38,7 @@ params = {
     'obstacle_sphere_radius': 0.04
 }
 
-TEST_MODE = 1
+TEST_MODE = 2
 
 if __name__ == '__main__':
     initial_time = 0.
@@ -108,7 +108,7 @@ if __name__ == '__main__':
             obstacle_sphere_radius=params['obstacle_sphere_radius'],
             test_mode=2
         )
-        model = TD3.load('./models/RUN_3/reach_1000000', env=env)
+        model = TD3.load('./models/RUN_5/best/best_model', env=env)
         t1 = datetime.datetime.now()
         initial_time = (t1 - t0).total_seconds()
         print('time of initialization: ', initial_time)

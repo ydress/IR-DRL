@@ -24,13 +24,13 @@ params = {
     'is_good_view': True,
     'is_train' : False,
     'show_boundary' : True,
-    'add_moving_obstacle' : False,
+    'add_moving_obstacle' : True,
     'moving_obstacle_speed' : 0.15,
     'moving_init_direction' : -1,
     'moving_init_axis' : 0,
     'workspace' : [-0.4, 0.4, 0.3, 0.7, 0.2, 0.4],
     'max_steps_one_episode' : 512,
-    'num_obstacles' : 1,
+    'num_obstacles' : 0,
     'prob_obstacles' : 0.8,
     'obstacle_box_size' : [0.04,0.04,0.002],
     'obstacle_sphere_radius' : 0.05       
@@ -56,7 +56,7 @@ if __name__=='__main__':
         obstacle_sphere_radius=params['obstacle_sphere_radius']
         )
     # load drl model
-    model = TD3.load('./models/RUN_3/best/best_model', env=env)  
+    model = TD3.load('./models/RUN_5/best/best_model', env=env)
 
     while True:
         done = False
